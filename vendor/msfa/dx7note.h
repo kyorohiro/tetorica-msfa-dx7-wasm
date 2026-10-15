@@ -38,7 +38,10 @@ class Dx7Note {
 
   void keyup();
 
-  // TODO: parameter changes
+  // Tetorica: live controls only; envelope shape, scaling and algorithm remain
+  // captured at Note On. All input is validated by the adapter's JS host.
+  void edit(const char patch[156], const bool output_changed[6],
+      const bool frequency_changed[6], bool feedback_changed);
 
   // TODO: some way of indicating end-of-note. Maybe should be a return
   // value from the compute method? (Having a count return from keyup
@@ -57,6 +60,9 @@ class Dx7Note {
   int algorithm_;
   int pitchmoddepth_;
   int pitchmodsens_;
+  int midi_note_;
+  int level_scaling_[6];
+  int velocity_scaling_[6];
 };
 
 #endif  // SYNTH_DX7NOTE_H_

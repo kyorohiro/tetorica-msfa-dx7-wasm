@@ -39,24 +39,39 @@ class Env {
 
   void keydown(bool down);
   void setparam(int param, int value);
+  // Tetorica: retarget level without restarting a captured envelope. Values are
+  // the same velocity/key-scaled microsteps accepted by init().
+  void setoutlevel(int outlevel);
   static int scaleoutlevel(int outlevel);
  private:
+  struct State {
+    int32_t level;
+    int targetlevel;
+    bool rising;
+    int ix;
+    int inc;
+  };
   int rates_[4];
   int levels_[4];
   int outlevel_;
+  int initial_outlevel_;
   int rate_scaling_;
   // Level is stored so that 2^24 is one doubling, ie 16 more bits than
   // the DX7 itself (fraction is stored in level rather than separate
   // counter)
-  int32_t level_;
-  int targetlevel_;
-  bool rising_;
-  int ix_;
-  int inc_;
+  State state_;
+  // Tetorica: an independent trajectory keeps advancing under live attenuation.
+  // Start full-level to retain progress for initially silent operators; adopt
+  // the exact legacy state on the first ordinary edit. Mute never ends an EG.
+  State reference_;
+  int reference_outlevel_;
+  bool live_level_;
 
   bool down_;
 
-  void advance(int newix);
+  int32_t sample(State &state, int outlevel);
+  void advance(State &state, int newix, int outlevel);
+  int target(int stage, int outlevel) const;
 };
 
 #endif  // __ENV_H

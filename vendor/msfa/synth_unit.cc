@@ -61,11 +61,13 @@ SynthUnit::SynthUnit(RingBuffer *ring_buffer) : lfo_(), controllers_() {
   for (int note = 0; note < max_active_notes; ++note) {
     active_note_[note].dx7_note = new Dx7Note();
     active_note_[note].midi_note = -1;
+    active_note_[note].voice_id = 0;
     active_note_[note].keydown = false;
     active_note_[note].sustained = false;
     active_note_[note].live = false;
   }
   input_buffer_index_ = 0;
+  voice_id_ = 0;
   memset(patch_data_, 0, sizeof(patch_data_));
   memcpy(patch_data_, epiano, sizeof(epiano));
   ProgramChange(0);
@@ -86,9 +88,43 @@ SynthUnit::~SynthUnit() {
 }
 
 void SynthUnit::SetVoice(const uint8_t *voice155) {
+  SelectVoice(voice155, 0);
+}
+
+void SynthUnit::SelectVoice(const uint8_t *voice155, uint32_t voice_id) {
   memcpy(unpacked_patch_, voice155, 155);
   unpacked_patch_[155] = 0x3f;
+  voice_id_ = voice_id;
   lfo_.reset(unpacked_patch_ + 137);
+}
+
+void SynthUnit::EditVoice(const uint8_t *voice155, uint32_t voice_id) {
+  // An unexpected identity is a selection, never an edit of another cohort.
+  if (voice_id != voice_id_) {
+    SelectVoice(voice155, voice_id);
+    return;
+  }
+  bool output_changed[6];
+  bool frequency_changed[6];
+  for (int op = 0; op < 6; ++op) {
+    const int off = op * 21;
+    output_changed[op] = voice155[off + 16] !=
+        static_cast<uint8_t>(unpacked_patch_[off + 16]);
+    frequency_changed[op] = memcmp(voice155 + off + 17,
+        unpacked_patch_ + off + 17, 4) != 0;
+  }
+  const bool feedback_changed = voice155[135] !=
+      static_cast<uint8_t>(unpacked_patch_[135]);
+  const bool lfo_changed = memcmp(voice155 + 137, unpacked_patch_ + 137, 6) != 0;
+  memcpy(unpacked_patch_, voice155, 155);
+  // Name, EG, algorithm, scaling etc. are intentionally future-note fields.
+  for (int note = 0; note < max_active_notes; ++note) {
+    if (active_note_[note].live && active_note_[note].voice_id == voice_id) {
+      active_note_[note].dx7_note->edit(unpacked_patch_, output_changed,
+          frequency_changed, feedback_changed);
+    }
+  }
+  if (lfo_changed) lfo_.reset(unpacked_patch_ + 137);
 }
 
 int SynthUnit::SendMidi(const uint8_t *buffer, int size) {
@@ -143,6 +179,7 @@ int SynthUnit::AllocateNote() {
 }
 
 void SynthUnit::ProgramChange(int p) {
+  voice_id_ = 0;
   current_patch_ = p;
   const uint8_t *patch = patch_data_ + 128 * current_patch_;
   UnpackPatch((const char *)patch, unpacked_patch_);
@@ -181,6 +218,7 @@ int SynthUnit::ProcessMidiMessage(const uint8_t *buf, int buf_size) {
       if (note_ix >= 0) {
         lfo_.keydown();  // TODO: should only do this if # keys down was 0
         active_note_[note_ix].midi_note = buf[1];
+        active_note_[note_ix].voice_id = voice_id_;
         active_note_[note_ix].keydown = true;
         active_note_[note_ix].sustained = sustain_;
         active_note_[note_ix].live = true;

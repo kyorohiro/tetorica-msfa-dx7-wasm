@@ -41,8 +41,9 @@ void Freqlut::init(double sample_rate) {
   }
 }
 
-// Note: if logfreq is more than 20.0, the results will be inaccurate. However,
-// that will be many times the Nyquist rate.
+// Tetorica: retain the original LUT arithmetic within its normal range. Above
+// 20 octaves, form a defined modulo-2^32 phase increment rather than shifting by
+// a negative count. Such frequencies alias; they are not clamped to audio range.
 int32_t Freqlut::lookup(int32_t logfreq) {
   int ix = (logfreq & 0xffffff) >> SAMPLE_SHIFT;
 
@@ -51,5 +52,8 @@ int32_t Freqlut::lookup(int32_t logfreq) {
   int lowbits = logfreq & ((1 << SAMPLE_SHIFT) - 1);
   int32_t y = y0 + ((((int64_t)(y1 - y0) * (int64_t)lowbits)) >> SAMPLE_SHIFT);
   int hibits = logfreq >> 24;
-  return y >> (MAX_LOGFREQ_INT - hibits);
+  const int shift = MAX_LOGFREQ_INT - hibits;
+  if (shift >= 32 || shift <= -32) return 0;
+  if (shift >= 0) return y >> shift;
+  return static_cast<int32_t>(static_cast<uint32_t>(y) << -shift);
 }

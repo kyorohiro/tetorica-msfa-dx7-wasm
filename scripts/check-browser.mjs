@@ -173,6 +173,69 @@ async function testAudio(page, base, rate) {
         const untouchedBankVoice = await instrument.getPreset();
         instrument.selectVoice(31);
         const restoredBankVoice = await instrument.getPreset();
+        instrument.selectVoice(0);
+        const feedbackBeforeSelection = instrument.setFeedback(3);
+        instrument.selectVoice(31);
+        await feedbackBeforeSelection;
+        const metadataRace = {afterFeedback:instrument.selectedVoice};
+        const presetBeforeSelection = instrument.getPreset();
+        instrument.selectVoice(0);
+        metadataRace.presetSnapshot = (await presetBeforeSelection).name;
+        metadataRace.afterPreset = instrument.selectedVoice;
+        // Probe held notes rather than retriggering after each edit. This catches
+        // bridges that update the saved preset but leave active voices unchanged.
+        const measure = async () => {
+          await wait(100);
+          const frames = [];
+          for (let frame = 0; frame < 3; frame++) {
+            analyser.getFloatTimeDomainData(pcm);
+            const crossings = [];
+            let energy = 0;
+            for (let i = 0; i < pcm.length; i++) {
+              energy += pcm[i] * pcm[i];
+              if (i && pcm[i - 1] <= 0 && pcm[i] > 0) crossings.push(i - 1 - pcm[i - 1] / (pcm[i] - pcm[i - 1]));
+            }
+            frames.push({rms:Math.sqrt(energy / pcm.length), hz:crossings.length > 1 ? context.sampleRate * (crossings.length - 1) / (crossings.at(-1) - crossings[0]) : 0});
+            await wait(20);
+          }
+          return {rms:frames.reduce((sum, frame) => sum + frame.rms, 0) / frames.length, hz:frames.reduce((sum, frame) => sum + frame.hz, 0) / frames.length};
+        };
+        const live = {};
+        const heldPreset = name => ({name, algorithm:31, operators:{1:{coarse:1, fine:0, detune:7, outputLevel:90, envelope:{rates:[99,99,99,0], levels:[99,99,99,0]}}}});
+        instrument.panic();
+        await instrument.setPreset(heldPreset('LIVE A'));
+        instrument.noteOn(69, 100);
+        live.initial = await measure();
+        await instrument.setFeedback(7);
+        live.feedback = (await instrument.getPreset()).feedback;
+        await instrument.setFeedback(0);
+        await instrument.setOperator(1, {coarse:2});
+        live.octave = await measure();
+        await instrument.setOperators([[1,{outputLevel:55}], [6,{fine:12}]]);
+        live.quiet = await measure();
+        let liveRejected = false;
+        try { await instrument.setOperators([[1,{outputLevel:0}], [6,{coarse:32}]]); } catch { liveRejected = true; }
+        live.afterInvalid = await measure();
+        await instrument.setOperator(1, {outputLevel:0});
+        live.muted = await measure();
+        await instrument.setOperator(1, {outputLevel:90, mode:'fixed', coarse:2, fine:0});
+        live.fixed = await measure();
+        await instrument.setOperator(1, {mode:'ratio', coarse:1});
+        live.restored = await measure();
+        // Replacing a preset starts a new edit cohort. The old held/released
+        // sound is kept, even when the same bank slot is subsequently edited.
+        await instrument.setPreset({...heldPreset('LIVE B'), operators:{1:{...heldPreset('LIVE B').operators[1], coarse:2}}});
+        await instrument.setOperator(1, {outputLevel:0, coarse:3});
+        live.oldCohort = await measure();
+        instrument.panic(); instrument.noteOn(69, 100);
+        live.newMuted = await measure();
+        await instrument.setOperator(1, {outputLevel:90});
+        live.newHeld = await measure();
+        instrument.noteOff(69);
+        await instrument.setOperator(1, {outputLevel:0});
+        live.releaseMuted = await measure();
+        await instrument.setOperator(1, {outputLevel:90});
+        live.releaseRestored = await measure();
         instrument.panic();
         await wait(100);
         const silentPeak = peak();
@@ -183,7 +246,7 @@ async function testAudio(page, base, rate) {
         await context.close();
         window.__probe = { rate: context.sampleRate, maxPeak, silentPeak, name, rejected, preserved, disposedRejected,
           objectPreset, independentPreset, objectMetadata, objectPeak, editedPreset, objectRejected, objectPreserved,
-          editedBank, untouchedBankVoice, restoredBankVoice, errors };
+          editedBank, untouchedBankVoice, restoredBankVoice, metadataRace, live, liveRejected, errors };
       } catch (error) { window.__probe = { error: error.stack ?? String(error) }; }
     };
   }, { rate, single: [...single], bank:[...bank] });
@@ -215,6 +278,24 @@ async function testAudio(page, base, rate) {
   assert.equal(result.untouchedBankVoice.name, 'TEST 1');
   assert.equal(result.restoredBankVoice.name, 'BANK EDIT');
   assert.equal(result.restoredBankVoice.operators[1].fine, 12);
+  assert.deepEqual(result.metadataRace, {afterFeedback:31, presetSnapshot:'BANK EDIT', afterPreset:0}, 'Earlier metadata acknowledgements retain later optimistic selection while reads return ordered snapshots');
+  const live = result.live;
+  const nearHz = (frame, expected, label) => assert.ok(Math.abs(frame.hz / expected - 1) < .03, `${label}: ${JSON.stringify(frame)} expected ${expected} Hz`);
+  nearHz(live.initial, 440, 'Held ratio note');
+  assert.equal(live.feedback, 7, 'Feedback acknowledgement updates the selected preset');
+  nearHz(live.octave, 880, 'Live coarse edit');
+  assert.ok(live.quiet.rms < live.octave.rms * .15 && live.quiet.rms > .00001, 'Live Output Level lowers a held note');
+  assert.equal(result.liveRejected, true);
+  assert.ok(Math.abs(live.afterInvalid.rms / live.quiet.rms - 1) < .1, 'Rejected batch cannot partly mute a held note');
+  assert.ok(live.muted.rms < live.initial.rms * .002, 'Output Level zero mutes a held note');
+  nearHz(live.fixed, 100, 'Live ratio to fixed mode');
+  nearHz(live.restored, 440, 'Live fixed to ratio mode');
+  nearHz(live.oldCohort, 440, 'Replacing a preset preserves its old held notes');
+  assert.ok(Math.abs(live.oldCohort.rms / live.restored.rms - 1) < .1, 'New-preset edits do not change an older cohort');
+  assert.ok(live.newMuted.rms < live.initial.rms * .002, 'New notes use the edited preset');
+  nearHz(live.newHeld, 1320, 'New cohort responds to live edits');
+  assert.ok(live.releaseMuted.rms < live.newHeld.rms * .002, 'Released notes also receive Output Level edits');
+  assert.ok(live.releaseRestored.rms > live.newHeld.rms * .7, `A slow release continues without retriggering: ${JSON.stringify(live)}`);
   assert.deepEqual(result.errors, []);
   return result;
 }
@@ -313,7 +394,7 @@ try {
       page.on('pageerror', error => console.error(`[${name}] ${error.message}`));
       for (const rate of [44100, 48000]) {
         const audio = await testAudio(page, devBase, rate);
-        results.push({ browser: name, mode: 'AudioWorklet SysEx + object API', rate, peak: audio.maxPeak, objectPeak:audio.objectPeak });
+        results.push({ browser: name, mode: 'AudioWorklet SysEx + live object API', rate, peak: audio.maxPeak, objectPeak:audio.objectPeak, live:audio.live });
       }
       await testErrors(page, devBase);
       results.push({ browser: name, mode: 'fatal + initialization + context-close cleanup', passed: true });

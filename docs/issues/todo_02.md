@@ -2,6 +2,12 @@
 
 ## 目的
 
+2026-10-16 採用仕様と実装・検証記録：
+[`msfa-live-parameters/README.md`](msfa-live-parameters/README.md)。
+今回は Phase 1・2 と Feedback を実装し、Algorithm・EG 全般は調査と
+制約の記録までとする。既存の API シグネチャは維持し、対応フィールドが
+発音中にも反映される挙動変更は意図した変更として許容する。
+
 現在のTetoricaのMSFAベースDX7音源では、オペレーターやアルゴリズムの変更が基本的に次のNote Onから反映される。
 
 これを改善し、**YM2612と同様に、Note On後も音色パラメーターをリアルタイムに変更できるようにする。**
@@ -95,11 +101,9 @@ https://github.com/probonopd/MiniDexed
 ```javascript
 dx7.noteOn(60, 100);
 
-await tween(1000, (t) => {
-  dx7.setOperator(2, {
-    outputLevel: Math.round(99 * t),
-  });
-});
+await tween(1, progress => dx7.setOperator(2, {
+  outputLevel: Math.round(99 * progress),
+})); // 1 秒。ブラウザ版では setter の Promise を返して適用完了を待つ。
 
 dx7.noteOff(60);
 ```

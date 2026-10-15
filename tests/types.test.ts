@@ -37,12 +37,14 @@ async function coreApi(): Promise<void> {
   synth.setOperator(operator, operatorPatch);
   synth.setOperators(batch);
   synth.setOperators([]);
+  const feedbackSet: void = synth.setFeedback(7);
   const current: DX7PresetState = synth.getPreset();
   const rate: number = current.operators[1].envelope.rates[3];
   const sync: boolean = current.lfo.sync;
   const name: string = current.name;
   synth.setPreset(current);
   void coreSet;
+  void feedbackSet;
   void rate;
   void sync;
   void name;
@@ -60,6 +62,8 @@ async function coreApi(): Promise<void> {
   synth.setPreset({operators:{1:{tl:32}}});
   // @ts-expect-error A seventh operator does not exist.
   synth.setPreset({operators:{7:{outputLevel:80}}});
+  // @ts-expect-error Feedback uses the DX7 numeric raw value, not a label.
+  synth.setFeedback('7');
   synth.noteOn(60, 100);
   const owned: Float32Array = synth.render(1024);
   synth.renderInto(owned);
@@ -88,6 +92,8 @@ async function browserApi(context: AudioContext): Promise<void> {
   await applied;
   await synth.setOperator(1, {mode:'ratio', coarse:2});
   await synth.setOperators([[1,{fine:5}], [6,{outputLevel:0}]] as const);
+  const feedbackApplied: Promise<void> = synth.setFeedback(3);
+  await feedbackApplied;
   const current: DX7PresetState = await synth.getPreset();
   const request: Promise<DX7PresetState> = synth.getPreset();
   await synth.setPreset(current);
@@ -100,7 +106,12 @@ async function browserApi(context: AudioContext): Promise<void> {
   synth.setOperators({1:{outputLevel:80}});
   // @ts-expect-error Booleans are not numeric DX7 raw values.
   synth.setPreset({lfo:{speed:true}});
+  // @ts-expect-error Worklet feedback updates resolve asynchronously.
+  const synchronousFeedback: void = synth.setFeedback(0);
+  // @ts-expect-error Feedback uses the same numeric value as the core.
+  synth.setFeedback('3');
   void synchronous;
+  void synchronousFeedback;
   synth.noteOn(60, 100);
   synth.noteOff(60);
   synth.allNotesOff();

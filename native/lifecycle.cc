@@ -42,10 +42,17 @@ int main() {
     // Creating/destroying another core must not change the first core.
     auto* a = dx7_create(); load(a);
     auto* b = dx7_create(); load(b);
+    dx7_select_voice(a, 17); dx7_select_voice(b, 17);
     dx7_note_on(a, 69, 100); dx7_note_on(b, 69, 100);
     dx7_render(a, 63); dx7_render(b, 63);
     assert(std::memcmp(dx7_output_ptr(a), dx7_output_ptr(b), 63 * sizeof(float)) == 0);
     dx7_destroy(b);
+    const auto before_edit = live_allocations.load();
+    dx7_voice_ptr(a)[5 * 21 + 16] = 70;
+    dx7_voice_ptr(a)[5 * 21 + 18] = 2;
+    dx7_voice_ptr(a)[135] = 7;
+    dx7_edit_voice(a, 17);
+    assert(live_allocations.load() == before_edit);
     // Exercise partial-block leftovers, release, and replacement ownership.
     dx7_render(a, 128); dx7_all_notes_off(a); dx7_render(a, 129);
     dx7_panic(a); dx7_render(a, 67);

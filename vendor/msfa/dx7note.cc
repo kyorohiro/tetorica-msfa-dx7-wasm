@@ -129,6 +129,7 @@ static const uint8_t pitchmodsenstab[] = {
 };
 
 void Dx7Note::init(const char patch[156], int midinote, int velocity) {
+  midi_note_ = midinote;
   int rates[4];
   int levels[4];
   for (int op = 0; op < 6; op++) {
@@ -146,13 +147,15 @@ void Dx7Note::init(const char patch[156], int midinote, int velocity) {
 #endif
     int level_scaling = ScaleLevel(midinote, patch[off + 8], patch[off + 9],
         patch[off + 10], patch[off + 11], patch[off + 12]);
+    level_scaling_[op] = level_scaling;
+    velocity_scaling_[op] = ScaleVelocity(velocity, patch[off + 15]);
     outlevel += level_scaling;
     outlevel = min(127, outlevel);
 #ifdef VERBOSE
     cout << op << ": " << level_scaling << " " << outlevel << endl;
 #endif
     outlevel = outlevel << 5;
-    outlevel += ScaleVelocity(velocity, patch[off + 15]);
+    outlevel += velocity_scaling_[op];
     outlevel = max(0, outlevel);
     int rate_scaling = ScaleRate(midinote, patch[off + 13]);
     env_[op].init(rates, levels, outlevel, rate_scaling);
@@ -177,6 +180,28 @@ void Dx7Note::init(const char patch[156], int midinote, int velocity) {
   fb_shift_ = feedback != 0 ? 8 - feedback : 16;
   pitchmoddepth_ = (patch[139] * 165) >> 6;
   pitchmodsens_ = pitchmodsenstab[patch[143] & 7];
+}
+
+void Dx7Note::edit(const char patch[156], const bool output_changed[6],
+    const bool frequency_changed[6], bool feedback_changed) {
+  for (int op = 0; op < 6; ++op) {
+    const int off = op * 21;
+    if (output_changed[op]) {
+      int outlevel = Env::scaleoutlevel(patch[off + 16]);
+      outlevel = min(127, outlevel + level_scaling_[op]);
+      outlevel = max(0, outlevel * 32 + velocity_scaling_[op]);
+      env_[op].setoutlevel(outlevel);
+    }
+    if (frequency_changed[op]) {
+      // Leave phase, feedback history, pitch EG and shared LFO untouched.
+      basepitch_[op] = osc_freq(midi_note_, patch[off + 17], patch[off + 18],
+          patch[off + 19], patch[off + 20]);
+    }
+  }
+  if (feedback_changed) {
+    int feedback = patch[135];
+    fb_shift_ = feedback != 0 ? 8 - feedback : 16;
+  }
 }
 
 void Dx7Note::compute(int32_t *buf, int32_t lfo_val, int32_t lfo_delay,

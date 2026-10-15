@@ -1,11 +1,12 @@
 // Copyright 2026 Tetorica contributors. SPDX-License-Identifier: Apache-2.0
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "dx7.h"
 
 int main(int argc, char** argv) {
-  if (argc != 5) {
-    fprintf(stderr, "Usage: dx7-reference voice.bin output-frames note off-at-frame\n");
+  if (argc != 5 && argc != 7) {
+    fprintf(stderr, "Usage: dx7-reference voice.bin output-frames note off-at-frame [edit-voice.bin edit-at-frame]\n");
     return 1;
   }
   FILE* voice_file = fopen(argv[1], "rb");
@@ -14,19 +15,38 @@ int main(int argc, char** argv) {
   const auto read = fread(dx7_voice_ptr(synth), 1, 155, voice_file);
   fclose(voice_file);
   if (read != 155) { dx7_destroy(synth); return 3; }
-  dx7_set_voice(synth);
+  const bool edit = argc == 7;
+  uint8_t edit_voice[155];
+  int edit_at = -1;
+  if (edit) {
+    FILE* edit_file = fopen(argv[5], "rb");
+    if (!edit_file) { dx7_destroy(synth); return 2; }
+    const auto edit_read = fread(edit_voice, 1, 155, edit_file);
+    fclose(edit_file);
+    if (edit_read != 155) { dx7_destroy(synth); return 3; }
+    edit_at = atoi(argv[6]);
+    dx7_select_voice(synth, 1);
+  } else {
+    dx7_set_voice(synth);
+  }
   const int frames = atoi(argv[2]);
   const int note = atoi(argv[3]);
   const int off_at = atoi(argv[4]);
-  if (frames < 0 || frames > 10000000 || note < 0 || note > 127 || off_at < 0 || off_at > frames) {
+  if (frames < 0 || frames > 10000000 || note < 0 || note > 127 || off_at < 0 || off_at > frames ||
+      (edit && (edit_at < 0 || edit_at >= frames))) {
     dx7_destroy(synth); return 4;
   }
   dx7_note_on(synth, note, 100);
   for (int offset = 0; offset < frames;) {
+    if (offset == edit_at) {
+      memcpy(dx7_voice_ptr(synth), edit_voice, 155);
+      dx7_edit_voice(synth, 1);
+    }
     if (offset == off_at) dx7_note_off(synth, note);
     int count = frames - offset;
     if (count > 1024) count = 1024;
     if (offset < off_at && offset + count > off_at) count = off_at - offset;
+    if (offset < edit_at && offset + count > edit_at) count = edit_at - offset;
     dx7_render(synth, count);
     if (fwrite(dx7_output_ptr(synth), sizeof(float), count, stdout) != static_cast<size_t>(count)) {
       dx7_destroy(synth); return 5;

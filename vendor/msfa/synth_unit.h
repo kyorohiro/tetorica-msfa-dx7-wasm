@@ -29,6 +29,7 @@
 
 struct ActiveNote {
   int midi_note;
+  uint32_t voice_id;
   bool keydown;
   bool sustained;
   bool live;
@@ -45,6 +46,10 @@ class SynthUnit {
   // A validated DX7 single-voice payload (155 unpacked parameter bytes).
   // Existing notes keep operator parameters; shared LFO controls are updated.
   void SetVoice(const uint8_t *voice155);
+  // Tetorica: a bank slot keeps its ID when selected again. Replacements get a
+  // new ID. Live edits affect that slot's sounding and releasing notes only.
+  void SelectVoice(const uint8_t *voice155, uint32_t voice_id);
+  void EditVoice(const uint8_t *voice155, uint32_t voice_id);
 
   // The adapter sends complete, validated MIDI messages directly.
   int SendMidi(const uint8_t *buffer, int size);
@@ -83,6 +88,7 @@ class SynthUnit {
   int current_patch_;
 
   char unpacked_patch_[156];
+  uint32_t voice_id_;
 
   // The original DX7 had one single LFO. Later units had an LFO per note.
   Lfo lfo_;

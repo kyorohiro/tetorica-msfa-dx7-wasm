@@ -124,12 +124,15 @@ async function checkCoreAndBrowser() {
   const synchronous: void = core.setPreset(preset);
   core.setOperator(1, patch);
   core.setOperators(edits);
+  const synchronousFeedback: void = core.setFeedback(5);
   const coreState: DX7PresetState = core.getPreset();
   const browser: DX7Node = await createDX7Node(new AudioContext());
   const applied: Promise<void> = browser.setPreset(preset);
   await applied;
   await browser.setOperator(1, patch);
   await browser.setOperators(edits);
+  const feedbackApplied: Promise<void> = browser.setFeedback(5);
+  await feedbackApplied;
   const browserState: DX7PresetState = await browser.getPreset();
   // @ts-expect-error Logical operator labels are 1..6.
   browser.setOperator(0, patch);
@@ -137,7 +140,9 @@ async function checkCoreAndBrowser() {
   core.setOperators({1:patch});
   // @ts-expect-error Unknown preset fields are rejected.
   browser.setPreset({unknown:true});
-  void synchronous; void coreState; void browserState;
+  // @ts-expect-error Feedback is a DX7 integer number.
+  browser.setFeedback('5');
+  void synchronous; void synchronousFeedback; void coreState; void browserState;
 }
 void checkCoreAndBrowser;
 `);
@@ -189,9 +194,11 @@ window.renderDX7 = async function () {
   assert.ok(wasm.length > 0, 'Vite must emit the exported WASM asset.');
   for (const path of wasm) assert.deepEqual([...(await readFile(path)).subarray(0, 4)], [0, 97, 115, 109]);
   const javascript = await Promise.all(outputFiles.filter(path => path.endsWith('.js')).map(async path => ({ path, source: await readFile(path, 'utf8') })));
-  const processor = javascript.find(file => file.source.includes('registerProcessor') && file.source.includes('tetorica-msfa-dx7'));
-  assert.ok(processor, 'Vite must bundle the public Worklet export into its own processor module.');
-  assert.ok(processor.source.includes('WebAssembly.instantiate'), 'The bundled processor must contain the WASM core loader.');
+  // Vite can emit both the browser API's raw default-URL asset and the explicit
+  // ?worker&url bundled entry. Select by contents, not hash-dependent file order.
+  const processors = javascript.filter(file => file.source.includes('registerProcessor') && file.source.includes('tetorica-msfa-dx7'));
+  const processor = processors.find(file => file.source.includes('WebAssembly.instantiate'));
+  assert.ok(processor, 'Vite must bundle the public Worklet export together with the WASM core loader.');
   assert.ok(!/from\s*["']\.\/index\.js["']/.test(processor.source), 'The Worklet cannot retain an unbundled private core import.');
   const processorName = processor.path.slice(dirname(processor.path).length + 1);
   assert.ok(javascript.some(file => file.path !== processor.path && file.source.includes(processorName)), 'The consumer must reference the emitted Worklet URL.');

@@ -13,6 +13,7 @@ struct DX7 {
   SynthUnit* synth;
   uint8_t voice[155] = {};
   bool has_voice = false;
+  uint32_t voice_id = 0;
   int16_t pcm[kFrames];
   float output[kFrames];
   DX7() : synth(new SynthUnit(nullptr)) {}
@@ -38,6 +39,19 @@ void dx7_set_voice(void* handle) {
   auto* dx7 = static_cast<DX7*>(handle);
   dx7->synth->SetVoice(dx7->voice);
   dx7->has_voice = true;
+  dx7->voice_id = 0;
+}
+void dx7_select_voice(void* handle, uint32_t voice_id) {
+  auto* dx7 = static_cast<DX7*>(handle);
+  dx7->synth->SelectVoice(dx7->voice, voice_id);
+  dx7->has_voice = true;
+  dx7->voice_id = voice_id;
+}
+void dx7_edit_voice(void* handle, uint32_t voice_id) {
+  auto* dx7 = static_cast<DX7*>(handle);
+  dx7->synth->EditVoice(dx7->voice, voice_id);
+  dx7->has_voice = true;
+  dx7->voice_id = voice_id;
 }
 void dx7_note_on(void* handle, int note, int velocity) {
   if (note < 0 || note > 127 || velocity < 0 || velocity > 127) return;
@@ -54,7 +68,7 @@ void dx7_panic(void* handle) {
   auto* dx7 = static_cast<DX7*>(handle);
   delete dx7->synth;
   dx7->synth = new SynthUnit(nullptr);
-  if (dx7->has_voice) dx7->synth->SetVoice(dx7->voice);
+  if (dx7->has_voice) dx7->synth->SelectVoice(dx7->voice, dx7->voice_id);
 }
 void dx7_render(void* handle, int frames) {
   if (frames < 0 || frames > kFrames) return;

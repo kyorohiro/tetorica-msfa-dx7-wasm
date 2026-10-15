@@ -4,6 +4,7 @@ import { common, root } from './build-common.mjs';
 await mkdir(new URL('../wasm/', import.meta.url), { recursive: true });
 const exports = [
   'dx7_create', 'dx7_destroy', 'dx7_voice_ptr', 'dx7_set_voice', 'dx7_output_ptr',
+  'dx7_select_voice', 'dx7_edit_voice',
   'dx7_note_on', 'dx7_note_off', 'dx7_all_notes_off', 'dx7_panic', 'dx7_render',
 ];
 const result = spawnSync(process.env.EMXX ?? 'em++', [

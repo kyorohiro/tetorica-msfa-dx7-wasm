@@ -290,12 +290,11 @@ for (const sampleRate of [44100,48000]) {
     } finally { object.dispose(); sysex.dispose(); }
   });
 
-  test(`operator and algorithm edits affect later Note On while held notes keep their original patch at ${sampleRate} Hz`, async () => {
+  test(`setPreset affects later Note On while held notes keep their original patch at ${sampleRate} Hz`, async () => {
     const edited = await loaded(createInitVoice(),sampleRate), control = await loaded(createInitVoice(),sampleRate);
     try {
       for (const synth of [edited,control]) synth.noteOn(60,100);
       assert.deepEqual(edited.render(257), control.render(257));
-      edited.setOperator(1, {outputLevel:0});
       edited.setPreset({algorithm:0, operators:{1:{outputLevel:0}}});
       assert.deepEqual(edited.render(8192), control.render(8192), 'held operators and algorithm are not rewritten');
       edited.noteOff(60); control.noteOff(60);
@@ -314,7 +313,7 @@ for (const sampleRate of [44100,48000]) {
 test('all object API calls reject disposed instances, including otherwise empty edits', async () => {
   const synth = await loaded();
   synth.dispose();
-  for (const call of [() => synth.getPreset(), () => synth.setPreset({}), () => synth.setOperator(1,{}), () => synth.setOperators([])]) {
+  for (const call of [() => synth.getPreset(), () => synth.setPreset({}), () => synth.setOperator(1,{}), () => synth.setOperators([]), () => synth.setFeedback(0)]) {
     assert.throws(call, /disposed/);
   }
   synth.dispose();

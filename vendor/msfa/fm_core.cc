@@ -146,6 +146,9 @@ void FmCore::compute(int32_t *output, FmOpParams *params, int algorithm,
     } else if (!add) {
       has_contents[outbus] = false;
     }
-    param.phase += param.freq << LG_N;
+    // Tetorica: high-frequency phase deltas may have their sign bit set. Phase
+    // advancement is modulo 2^32, including those aliased frequencies.
+    param.phase = static_cast<int32_t>(static_cast<uint32_t>(param.phase) +
+        (static_cast<uint32_t>(param.freq) << LG_N));
   }
 }
