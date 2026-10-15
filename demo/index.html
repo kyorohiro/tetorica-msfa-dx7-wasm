@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151b">
+  <title>Tetorica MSFA DX7</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">TETORICA · MSFA / WEBASSEMBLY</p>
+      <h1>Six operators. One keyboard.</h1>
+      <p class="intro">Play DX7 SysEx voices in your browser. Synthesis runs in an AudioWorklet using Google's music-synthesizer-for-android engine.</p>
+    </header>
+    <section class="instrument" aria-label="DX7 instrument">
+      <div class="toolbar">
+        <button id="audio-start" class="primary">Audio Start</button>
+        <button id="load-sysex" disabled>Load SysEx…</button>
+        <input id="sysex-file" type="file" accept=".syx,application/octet-stream" hidden>
+        <label class="voice-label">Voice <select id="voice" disabled><option>INIT SINE</option></select></label>
+        <button id="all-notes-off" disabled>All Notes Off</button>
+        <button id="panic" disabled title="Immediately silence every voice">Panic</button>
+      </div>
+      <div class="status-row">
+        <span class="status-dot" aria-hidden="true"></span>
+        <p id="status" role="status" aria-live="polite" data-state="idle">Start audio to prepare the instrument.</p>
+      </div>
+      <div class="keyboard-scroll">
+        <div id="keyboard" role="group" aria-label="Piano keyboard" aria-disabled="true"></div>
+      </div>
+      <div class="instrument-footer">
+        <p>Click or touch the keys · PC keyboard: <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>D</kbd> <kbd>F</kbd> <kbd>T</kbd> <kbd>G</kbd> <kbd>Y</kbd> <kbd>H</kbd> <kbd>U</kbd> <kbd>J</kbd> <kbd>K</kbd></p>
+        <label>Volume <input id="volume" type="range" min="0" max="100" value="40" aria-label="Output volume"><output id="volume-value">40%</output></label>
+      </div>
+    </section>
+    <aside class="notes">
+      <p><strong>Bring your own voices.</strong> Load a DX7 single voice or 32-voice bank (.syx). The included INIT SINE is a self-authored test patch, not a third-party bank. <button id="download-init" class="text-button">Download INIT SINE</button></p>
+      <p>Mono · 16 voices · 44,100 Hz internal synthesis · output resampled to the audio device rate. All Notes Off lets envelopes release; Panic silences immediately.</p>
+    </aside>
+    <footer><a href="https://github.com/google/music-synthesizer-for-android" target="_blank" rel="noreferrer">MSFA upstream</a><span>Audio is generated locally. SysEx files are not uploaded.</span></footer>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

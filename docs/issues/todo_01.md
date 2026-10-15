@@ -1,5 +1,10 @@
 # Project: tetorica-msfa-dx7-wasm
 
+実装状況（2026-10-15）：Phase 1〜6のMVPを実装。
+調査と採用した制約は [research.md](../research.md)、
+検証結果と未確認環境は [verification.md](../verification.md)、
+利用方法は [README](../../README.md) を参照。
+
 ## 目的
 
 Google の music-synthesizer-for-android (msfa) に含まれる
