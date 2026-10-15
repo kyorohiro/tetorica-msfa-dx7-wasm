@@ -45,7 +45,7 @@ public API contracts and upstream limitations are in the README.
 - `npm run test:package`: locally packed tarball installed in an isolated
   directory. Bare package imports generated audible PCM at both output rates;
   consumer Vite builds resolved the public core/browser/Worklet/WASM exports.
-  License, types and research documents were present. No npm publication performed.
+  License, types and research documents were present. This consumer check itself does not publish.
 
 Environment: macOS ARM64, Node.js 25.2.1, Emscripten 6.0.6,
 Apple clang 17, TypeScript 5.9.3, Vite 7.3.7, Playwright 1.63.0.
@@ -67,3 +67,29 @@ The Firefox test used the matching Playwright Firefox 155.0 build.
   high-order, band-limited resampler.
 - No third-party voice banks, Dexed code, or existing Tetorica runtime dependency
   were introduced.
+
+## Object preset API — 2026-10-16 working tree
+
+- Added synchronous core setPreset/setOperator/setOperators/getPreset and
+  acknowledged Promise equivalents for the browser and Playground.
+- The selected slot and the rest of a 32-voice bank survive edits. Invalid
+  objects and batches leave both patch data and held audio unchanged.
+- Standalone Node suite: **41/41 passed**, including independent full-VCED
+  fixtures, 44.1/48 kHz SysEx/Object PCM equality, held/future-note behavior,
+  built-in-object rejection, cross-realm records and existing native comparison.
+- Parent runtime/Playground example suite: **48/48 passed**.
+- Standalone browser suite passed Chromium, WebKit and Firefox at 44.1/48 kHz:
+  setter acknowledgements, FIFO, copied state, bank selection, rejected edits,
+  pending-request disposal and source/production demo playback.
+- Playground and an isolated installed FM npm tarball passed Chromium/WebKit
+  in Main and Worker modes, with actual final PCM, mixer/FX, STOP/recreation.
+  Monaco method/field completions and typed hover also passed.
+- Standalone packed consumer passed Node PCM, strict public types and Vite
+  public export/WASM/Worklet checks. Parent npm declarations passed
+  NodeNext/Bundler and browser consumers without Node ambient types.
+- Playground itch ZIP generation verified 357 local module/asset references.
+  WASM/C++ and chip-clock behavior were unchanged; no npm publication or version
+  bump was performed for this work. Physical Tauri/Windows/Linux were not tested.
+- Operator, envelope and algorithm changes apply to future Note On. Applying a
+  voice resets shared LFO state, which can affect held notes. This adds no live
+  per-note operator editor, and retains upstream AM/transpose/sync limitations.

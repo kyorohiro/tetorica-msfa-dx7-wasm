@@ -2,8 +2,39 @@
   "name": "tetorica-msfa-dx7-wasm",
   "version": "0.1.0",
   "description": "Standalone MSFA DX7 synthesizer for JavaScript, Node.js and AudioWorklet",
+  "keywords": [
+    "dx7",
+    "msfa",
+    "fm-synthesis",
+    "synthesizer",
+    "midi",
+    "sysex",
+    "webassembly",
+    "wasm",
+    "audioworklet",
+    "web-audio",
+    "music",
+    "audio",
+    "nodejs",
+    "typescript"
+  ],
+  "author": "kyorohiro",
+  "homepage": "https://github.com/kyorohiro/tetorica-msfa-dx7-wasm#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kyorohiro/tetorica-msfa-dx7-wasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kyorohiro/tetorica-msfa-dx7-wasm/issues"
+  },
   "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
     "node": ">=22"
   },

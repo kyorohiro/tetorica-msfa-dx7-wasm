@@ -90,7 +90,7 @@ async function testDemo(page, base, name) {
 async function testAudio(page, base, rate) {
   await page.goto(`${base}/demo/`);
   // Run initialization from an actual user gesture, including AudioContext.resume.
-  await page.evaluate(({ rate, single }) => {
+  await page.evaluate(({ rate, single, bank }) => {
     const button = document.createElement('button');
     button.id = 'probe-start';
     button.textContent = 'Run Worklet test';
@@ -135,16 +135,58 @@ async function testAudio(page, base, rate) {
         }
         instrument.panic();
         await wait(100);
+        const presetInput = {name:'OBJECT', algorithm:31, operators:{1:{outputLevel:85}}};
+        const presetApplied = instrument.setPreset(presetInput);
+        presetInput.name = 'MUTATED';
+        presetInput.operators[1].outputLevel = 0;
+        // The following Note On must stay behind the preset command even when
+        // the caller has not awaited its acknowledgement yet.
+        instrument.noteOn(69, 100);
+        await presetApplied;
+        const objectPreset = await instrument.getPreset();
+        const objectMetadata = {voices:instrument.voices, selectedVoice:instrument.selectedVoice};
+        objectPreset.operators[1].outputLevel = 0;
+        const independentPreset = await instrument.getPreset();
+        let objectPeak = 0;
+        for (let i = 0; i < 30 && objectPeak < .001; i++) { await wait(30); objectPeak = Math.max(objectPeak, peak()); }
+        await instrument.setOperator(1, {coarse:2});
+        const edits = [[1,{fine:0}], [6,{outputLevel:0}]];
+        const editsApplied = instrument.setOperators(edits);
+        edits[0][1].fine = 99;
+        await editsApplied;
+        const editedPreset = await instrument.getPreset();
+        const stable = JSON.stringify(editedPreset);
+        let objectRejected = 0;
+        for (const update of [
+          () => instrument.setOperators([[1,{outputLevel:99}], [6,{fine:100}]]),
+          () => instrument.setPreset({name:()=>'invalid'}),
+          () => instrument.setOperator(0, {}),
+        ]) { try { await update(); } catch { objectRejected++; } }
+        const objectPreserved = JSON.stringify(await instrument.getPreset()) === stable;
+        // Editing one selected voice must retain the other 31 bank slots.
+        await instrument.loadSysex(new Uint8Array(bank));
+        instrument.selectVoice(31);
+        await instrument.setPreset({name:'BANK EDIT'});
+        await instrument.setOperator(1, {fine:12});
+        const editedBank = {voices:instrument.voices, selectedVoice:instrument.selectedVoice};
+        instrument.selectVoice(0);
+        const untouchedBankVoice = await instrument.getPreset();
+        instrument.selectVoice(31);
+        const restoredBankVoice = await instrument.getPreset();
+        instrument.panic();
+        await wait(100);
         const silentPeak = peak();
         instrument.dispose();
         instrument.dispose();
         let disposedRejected = false;
         try { instrument.noteOn(60); } catch { disposedRejected = true; }
         await context.close();
-        window.__probe = { rate: context.sampleRate, maxPeak, silentPeak, name, rejected, preserved, disposedRejected, errors };
+        window.__probe = { rate: context.sampleRate, maxPeak, silentPeak, name, rejected, preserved, disposedRejected,
+          objectPreset, independentPreset, objectMetadata, objectPeak, editedPreset, objectRejected, objectPreserved,
+          editedBank, untouchedBankVoice, restoredBankVoice, errors };
       } catch (error) { window.__probe = { error: error.stack ?? String(error) }; }
     };
-  }, { rate, single: [...single] });
+  }, { rate, single: [...single], bank:[...bank] });
   await page.locator('#probe-start').click();
   await page.waitForFunction(() => window.__probe, null, { timeout: 60000 });
   const result = await page.evaluate(() => window.__probe);
@@ -156,6 +198,23 @@ async function testAudio(page, base, rate) {
   assert.equal(result.preserved, 'AFTER LOAD');
   assert.equal(result.rejected, true);
   assert.equal(result.disposedRejected, true);
+  assert.equal(result.objectPreset.name, 'OBJECT', 'Caller mutation cannot change a queued preset');
+  assert.equal(result.independentPreset.operators[1].outputLevel, 85, 'getPreset returns an independent copy');
+  assert.equal(result.objectMetadata.voices[0].name, 'OBJECT');
+  assert.equal(result.objectMetadata.selectedVoice, 0);
+  assert.ok(result.objectPeak > .001 && result.objectPeak <= 1, 'Object preset produces normalized Worklet PCM');
+  assert.equal(result.editedPreset.operators[1].coarse, 2);
+  assert.equal(result.editedPreset.operators[1].fine, 0, 'Tuple patches are copied before queuing');
+  assert.equal(result.editedPreset.operators[6].outputLevel, 0);
+  assert.equal(result.objectRejected, 3);
+  assert.equal(result.objectPreserved, true, 'Invalid updates preserve the working patch and processor');
+  assert.equal(result.editedBank.voices.length, 32);
+  assert.equal(result.editedBank.selectedVoice, 31);
+  assert.equal(result.editedBank.voices[0].name, 'TEST 1');
+  assert.equal(result.editedBank.voices[31].name, 'BANK EDIT');
+  assert.equal(result.untouchedBankVoice.name, 'TEST 1');
+  assert.equal(result.restoredBankVoice.name, 'BANK EDIT');
+  assert.equal(result.restoredBankVoice.operators[1].fine, 12);
   assert.deepEqual(result.errors, []);
   return result;
 }
@@ -190,19 +249,27 @@ async function testErrors(page, base) {
         try { fatal.noteOn(60); } catch { noteRejected = true; }
         fatal.dispose();
 
+        const disposing = await createDX7Node(context);
+        const beforeDispose = disposing.node.port.onmessage;
+        disposing.node.port.onmessage = event => { if (event.data.type !== 'result') beforeDispose(event); };
+        const pendingPreset = disposing.setPreset({name:'DISPOSING'});
+        const disposedPresetRejected = pendingPreset.then(() => false, () => true);
+        disposing.dispose();
+        const rejectedOnDispose = await disposedPresetRejected;
+
         const closeErrors = [];
         const closing = await createDX7Node(context, { onError: error => closeErrors.push(error.message) });
         // Hold the acknowledgement on the main thread so the request is known
         // to be pending when the real AudioContext close event arrives.
         const onMessage = closing.node.port.onmessage;
         closing.node.port.onmessage = event => { if (event.data.type !== 'result') onMessage(event); };
-        const pending = closing.loadSysex(new Uint8Array(single));
+        const pending = closing.setOperators([]);
         const closeRejected = pending.then(() => false, () => true);
         await context.close();
         const rejectedOnClose = await closeRejected;
         const closeClean = closing.node.port.onmessage === null && closing.node.onprocessorerror === null;
         closing.dispose();
-        window.__errorProbe = { initRejected, initErrors, fatalRejected, fatalErrors, fatalClean, noteRejected, rejectedOnClose, closeErrors, closeClean };
+        window.__errorProbe = { initRejected, initErrors, fatalRejected, fatalErrors, fatalClean, noteRejected, rejectedOnDispose, rejectedOnClose, closeErrors, closeClean };
       } catch (error) {
         window.__errorProbe = { error: error.stack ?? String(error) };
         await context?.close().catch(() => {});
@@ -219,6 +286,7 @@ async function testErrors(page, base) {
   assert.equal(result.fatalErrors.length, 1, 'Processor failure reports its fatal error once');
   assert.equal(result.fatalClean, true);
   assert.equal(result.noteRejected, true);
+  assert.equal(result.rejectedOnDispose, true, 'Disposal rejects an unacknowledged object update');
   assert.equal(result.rejectedOnClose, true);
   assert.equal(result.closeErrors.length, 1);
   assert.equal(result.closeClean, true);
@@ -245,7 +313,7 @@ try {
       page.on('pageerror', error => console.error(`[${name}] ${error.message}`));
       for (const rate of [44100, 48000]) {
         const audio = await testAudio(page, devBase, rate);
-        results.push({ browser: name, mode: 'AudioWorklet', rate, peak: audio.maxPeak });
+        results.push({ browser: name, mode: 'AudioWorklet SysEx + object API', rate, peak: audio.maxPeak, objectPeak:audio.objectPeak });
       }
       await testErrors(page, devBase);
       results.push({ browser: name, mode: 'fatal + initialization + context-close cleanup', passed: true });

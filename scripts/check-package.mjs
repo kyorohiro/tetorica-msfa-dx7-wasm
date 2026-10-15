@@ -57,7 +57,7 @@ try {
   assert.equal(manifest.name, 'tetorica-msfa-dx7-wasm');
   const packaged = new Set(manifest.files.map(file => file.path));
   for (const path of ['src/index.js', 'src/index.d.ts', 'src/browser.js', 'src/browser.d.ts',
-    'src/sysex.js', 'src/sysex.d.ts', 'src/dx7-worklet.js', 'wasm/msfa.wasm',
+    'src/sysex.js', 'src/sysex.d.ts', 'src/preset.js', 'src/preset.d.ts', 'src/dx7-worklet.js', 'wasm/msfa.wasm',
     'LICENSE', 'THIRD_PARTY_NOTICES.md', 'vendor/msfa/COPYING', 'vendor/msfa/UPSTREAM.md', 'docs/research.md']) {
     assert.ok(packaged.has(path), `The npm tarball must include ${path}.`);
   }
@@ -88,12 +88,62 @@ for (const sampleRate of [44100, 48000]) {
     for (const value of pcm) { assert.ok(Number.isFinite(value) && value >= -1 && value <= 1); square += value * value; }
     const rms = Math.sqrt(square / pcm.length);
     assert.ok(rms > 0.001, 'installed package must render actual sound');
+    synth.panic();
+    synth.setPreset({name:'OBJECT', operators:{1:{outputLevel:85}}});
+    synth.setOperator(1, {coarse:2});
+    synth.setOperators([[1,{fine:0}], [6,{outputLevel:0}]]);
+    const preset = synth.getPreset();
+    assert.equal(preset.name, 'OBJECT');
+    assert.equal(preset.operators[1].coarse, 2);
+    assert.equal(preset.operators[1].fine, 0);
+    assert.equal(preset.operators[6].outputLevel, 0);
+    assert.throws(() => synth.setOperators([[1,{fine:99}], [6,{fine:100}]]));
+    assert.deepEqual(synth.getPreset(), preset, 'Invalid object batches preserve the installed core');
+    preset.operators[1].fine = 99;
+    assert.equal(synth.getPreset().operators[1].fine, 0, 'Installed getPreset returns a copy');
+    synth.noteOn(69, 100);
+    const objectPcm = synth.render(4096);
+    let objectSquare = 0;
+    for (const value of objectPcm) { assert.ok(Number.isFinite(value) && value >= -1 && value <= 1); objectSquare += value * value; }
+    assert.ok(Math.sqrt(objectSquare / objectPcm.length) > 0.001, 'Installed object preset must render actual sound');
     console.log(JSON.stringify({ sampleRate, frames: pcm.length, rms }));
   } finally { synth.dispose(); }
 }
 `);
   const nodeResult = await command(process.execPath, ['check-node.mjs'], consumer);
   process.stdout.write(nodeResult.stdout);
+
+  await writeFile(join(consumer, 'check-types.ts'), `
+import {createDX7, type DX7Preset, type DX7OperatorParams, type DX7OperatorEntries, type DX7PresetState} from 'tetorica-msfa-dx7-wasm';
+import {createDX7Node, type DX7Node} from 'tetorica-msfa-dx7-wasm/browser';
+const patch: DX7OperatorParams = {outputLevel:85, envelope:{rates:[99,99,99,70] as const}};
+const preset: DX7Preset = {name:'TYPED', operators:{1:patch}};
+const edits: DX7OperatorEntries = [[1,patch], [6,{outputLevel:0}]] as const;
+async function checkCoreAndBrowser() {
+  const core = await createDX7();
+  const synchronous: void = core.setPreset(preset);
+  core.setOperator(1, patch);
+  core.setOperators(edits);
+  const coreState: DX7PresetState = core.getPreset();
+  const browser: DX7Node = await createDX7Node(new AudioContext());
+  const applied: Promise<void> = browser.setPreset(preset);
+  await applied;
+  await browser.setOperator(1, patch);
+  await browser.setOperators(edits);
+  const browserState: DX7PresetState = await browser.getPreset();
+  // @ts-expect-error Logical operator labels are 1..6.
+  browser.setOperator(0, patch);
+  // @ts-expect-error A batch uses tuples rather than an operator record.
+  core.setOperators({1:patch});
+  // @ts-expect-error Unknown preset fields are rejected.
+  browser.setPreset({unknown:true});
+  void synchronous; void coreState; void browserState;
+}
+void checkCoreAndBrowser;
+`);
+  await command(process.execPath, [join(project, 'node_modules/typescript/bin/tsc'),
+    '--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext',
+    '--moduleResolution', 'NodeNext', '--lib', 'ES2022,DOM', '--skipLibCheck', 'false', 'check-types.ts'], consumer);
 
   await writeFile(join(consumer, 'index.html'), '<!doctype html><meta charset="utf-8"><title>DX7 package consumer</title><script type="module" src="/main.js"></script>');
   await writeFile(join(consumer, 'main.js'), `
@@ -105,6 +155,11 @@ window.startDX7 = async function () {
   const context = new AudioContext();
   const synth = await createDX7Node(context, { workletUrl, wasmUrl });
   await synth.loadSysex(createVoiceSysex(createInitVoice('BUNDLED')));
+  await synth.setPreset({name:'OBJECT', operators:{1:{outputLevel:85}}});
+  await synth.setOperator(1, {coarse:2});
+  await synth.setOperators([[1,{fine:0}], [6,{outputLevel:0}]]);
+  const preset = await synth.getPreset();
+  if (preset.name !== 'OBJECT' || preset.operators[1].coarse !== 2) throw new Error('Bundled object API did not apply');
   synth.node.connect(context.destination);
   synth.noteOn(69, 100);
   return { context, synth };
@@ -112,6 +167,9 @@ window.startDX7 = async function () {
 window.renderDX7 = async function () {
   const synth = await createDX7({ wasmUrl });
   await synth.loadSysex(createVoiceSysex(createInitVoice()));
+  synth.setPreset({name:'OFFLINE'});
+  synth.setOperators([[1,{outputLevel:85}]]);
+  if (synth.getPreset().name !== 'OFFLINE') throw new Error('Bundled core object API did not apply');
   synth.noteOn(60, 100);
   const pcm = synth.render(1024);
   synth.dispose();
@@ -137,7 +195,7 @@ window.renderDX7 = async function () {
   assert.ok(!/from\s*["']\.\/index\.js["']/.test(processor.source), 'The Worklet cannot retain an unbundled private core import.');
   const processorName = processor.path.slice(dirname(processor.path).length + 1);
   assert.ok(javascript.some(file => file.path !== processor.path && file.source.includes(processorName)), 'The consumer must reference the emitted Worklet URL.');
-  console.log(`Package consumer passed: ${manifest.name}@${manifest.version}; ${manifest.files.length} packaged files; Node 44100/48000 Hz PCM; Vite public core/browser/worklet/WASM exports.`);
+  console.log(`Package consumer passed: ${manifest.name}@${manifest.version}; ${manifest.files.length} packaged files; Node 44100/48000 Hz SysEx/object PCM; strict public core/browser types; Vite public core/browser/worklet/WASM exports.`);
   succeeded = true;
 } finally {
   if (succeeded && process.env.DX7_KEEP_PACKAGE_CHECK !== '1') {
