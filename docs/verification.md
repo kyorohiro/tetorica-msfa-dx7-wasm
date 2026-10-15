@@ -68,7 +68,7 @@ The Firefox test used the matching Playwright Firefox 155.0 build.
 - No third-party voice banks, Dexed code, or existing Tetorica runtime dependency
   were introduced.
 
-## Object preset API — 2026-10-16 working tree
+## Object preset API — 0.2.0 (2026-10-16)
 
 - Added synchronous core setPreset/setOperator/setOperators/getPreset and
   acknowledged Promise equivalents for the browser and Playground.
@@ -88,8 +88,10 @@ The Firefox test used the matching Playwright Firefox 155.0 build.
   public export/WASM/Worklet checks. Parent npm declarations passed
   NodeNext/Bundler and browser consumers without Node ambient types.
 - Playground itch ZIP generation verified 357 local module/asset references.
-  WASM/C++ and chip-clock behavior were unchanged; no npm publication or version
-  bump was performed for this work. Physical Tauri/Windows/Linux were not tested.
+  WASM/C++ and chip-clock behavior were unchanged. This API is packaged for
+  standalone 0.2.0 and tetorica-fm2612 0.2.15. Physical Tauri/Windows/Linux were
+  not tested.
 - Operator, envelope and algorithm changes apply to future Note On. Applying a
-  voice resets shared LFO state, which can affect held notes. This adds no live
+  voice reconfigures the shared LFO while retaining its phase, which can affect
+  held notes. This adds no live
   per-note operator editor, and retains upstream AM/transpose/sync limitations.

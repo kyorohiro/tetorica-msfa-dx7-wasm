@@ -58,7 +58,7 @@ try {
   const packaged = new Set(manifest.files.map(file => file.path));
   for (const path of ['src/index.js', 'src/index.d.ts', 'src/browser.js', 'src/browser.d.ts',
     'src/sysex.js', 'src/sysex.d.ts', 'src/preset.js', 'src/preset.d.ts', 'src/dx7-worklet.js', 'wasm/msfa.wasm',
-    'LICENSE', 'THIRD_PARTY_NOTICES.md', 'vendor/msfa/COPYING', 'vendor/msfa/UPSTREAM.md', 'docs/research.md']) {
+    'README.md', 'README.ja.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'vendor/msfa/COPYING', 'vendor/msfa/UPSTREAM.md', 'docs/research.md']) {
     assert.ok(packaged.has(path), `The npm tarball must include ${path}.`);
   }
   await writeFile(join(consumer, 'package.json'), JSON.stringify({ name: 'dx7-isolated-consumer', version: '0.0.0', private: true, type: 'module' }));
