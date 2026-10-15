@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// Tetorica modification (2026): retain captured note/scaling state and apply
+// live operator level/frequency/feedback edits without restarting the note.
 #ifdef VERBOSE
 #include <iostream>
 #endif

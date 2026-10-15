@@ -1,7 +1,7 @@
 # Result
 
-Completed 2026-10-16 within the adopted MVP scope. Versions remain standalone
-0.2.0 / bundled FM 0.2.15; this development work is not published to npm.
+Completed 2026-10-16 within the adopted MVP scope. Release versions:
+standalone 0.3.0 / bundled FM 0.2.16.
 
 ## Public behavior
 
@@ -28,8 +28,12 @@ are retained. Live edits do not reconfigure the shared LFO.
 
 Selection/replacement retains the previous documented shared-LFO side effects.
 General EG/rate/scaling/algorithm edits remain future-note-only. Raw feedback
-retains its history; abrupt feedback/frequency edits can step. No crossfade,
-frequency slew, general live EG editor or hardware-fidelity claim was added.
+retains its history. Abrupt feedback/frequency changes and their discontinuities
+or clicks are explicitly accepted API behavior. Values apply directly with no
+automatic parameter smoothing, interpolation, crossfade, slew or click
+suppression. Existing upstream gain interpolation and output resampling remain.
+NaN/Infinity reject; corrupted output, divergence and crashes are unacceptable.
+No general live EG editor or hardware-fidelity claim was added.
 
 Supported operator edits changing held notes is an intentional behavior change
 from published 0.2.0. Existing signatures and ordinary no-edit PCM are retained.
@@ -113,3 +117,19 @@ AM/transpose/oscillator-sync limitations and simple 48 kHz resampler remain.
 The new live-level model preserves time through mute but does not promise exact
 DX7 hardware EG timing after arbitrary parameter edits. No GPL source was copied;
 see `license-review.md` and the retained upstream notices.
+
+## Abrupt-change policy clarification — 2026-10-16
+
+The user explicitly accepts waveform discontinuities/clicks caused by abrupt
+frequency/feedback edits. README/specs now state direct parameter application
+and prohibit adding automatic smoothing, interpolation, glide, crossfades or
+click suppression. The existing implementation already follows this policy:
+native edit assigns base pitch / feedback shift directly, retaining phase, EG
+and feedback history. Upstream gain interpolation and PCM output resampling
+remain as existing signal-processing behavior. No DSP or runtime code changed.
+
+Two regressions bring the standalone suite to **77/77, skipped 0**, testing
+16 voices / 384 sharp changes at each of 44.1/48 kHz, small irregular chunks,
+atomic NaN/Infinity rejection, EG continuation, waveform recovery and normal
+release/panic. Audible steps are not test failures. Non-finite/corrupted output,
+divergence, crash and unnecessary phase/EG resets remain failures.

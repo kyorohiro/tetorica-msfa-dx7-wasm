@@ -8,3 +8,7 @@
 6. Verify real Worklet Main/Worker, isolated npm packages and static packaging.
 
 Avoid changing the allocator, clock, mono signal path or output resampler.
+Frequency/feedback discontinuities and clicks are accepted; add no automatic
+parameter smoothing, interpolation, glide, crossfade or click suppression.
+Verify direct application, retained phase/EG, rejection of non-finite input,
+bounded valid output, recovery and normal release after abrupt repeated edits.

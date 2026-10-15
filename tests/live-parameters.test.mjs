@@ -253,6 +253,72 @@ for (const sampleRate of [44100, 48000]) {
       assert.deepEqual(edited.render(4096),reference.render(4096), 'a released slot remains reusable after edits');
     } finally { edited.dispose(); reference.dispose(); }
   });
+
+  test(`rapid abrupt frequency and feedback steps remain valid with 16 voices at ${sampleRate} Hz`, async () => {
+    const envelope = {rates:[25,99,99,50],levels:[99,99,99,0]};
+    // OP6 is a carrier with its own feedback in algorithm 32. A deliberately
+    // slow attack makes accidental retriggering observable after rapid edits.
+    const preset = {algorithm:31,operators:{1:{outputLevel:0},6:{outputLevel:65,envelope}}};
+    const {instances:[whole,split],dispose} = await pair(preset,sampleRate);
+    try {
+      for (const synth of [whole,split]) {
+        for (let note = 48; note < 64; note++) synth.noteOn(note,80 + note % 30);
+        synth.render(sampleRate * 4);
+      }
+      const fragments = [1,7,17,31];
+      const render = frames => {
+        const expected = whole.render(frames),actual = new Float32Array(frames);
+        for (let offset = 0,part = 0; offset < frames;part++) {
+          const count = Math.min(fragments[part % fragments.length],frames - offset);
+          split.renderInto(actual.subarray(offset,offset + count)); offset += count;
+        }
+        assert.deepEqual(actual,expected,'abrupt edits are independent of caller render partitioning');
+        assertBounded(actual);
+        return actual;
+      };
+      const steady = rms(render(8192));
+      assert(steady > 0.001,'all 16 voices have reached an audible sustain');
+      const frequencies = [
+        {mode:'ratio',coarse:0,fine:0,detune:0},
+        {mode:'ratio',coarse:31,fine:99,detune:14},
+        {mode:'fixed',coarse:0,fine:0,detune:0},
+        {mode:'fixed',coarse:31,fine:99,detune:14},
+      ];
+      const counts = [1,17,63,64,65,129];
+      for (let step = 0; step < 384;step++) {
+        for (const synth of [whole,split]) {
+          synth.setOperator(6,frequencies[step % frequencies.length]);
+          synth.setFeedback(step % 2 ? 7 : 0);
+        }
+        if (step % 32 === 0) {
+          const before = whole.getPreset();
+          for (const invalid of [NaN,Infinity,-Infinity]) {
+            assert.throws(() => whole.setOperator(6,{coarse:invalid}));
+            assert.throws(() => whole.setOperators([[6,{fine:37}],[5,{detune:invalid}]]));
+            assert.throws(() => whole.setFeedback(invalid));
+          }
+          assert.deepEqual(whole.getPreset(),before,'invalid batches must not partially change the current voice');
+        }
+        // No click-size assertion: frequency/feedback are direct steps. Only
+        // valid finite PCM, intact state and bounded output are required here.
+        render(counts[step % counts.length]);
+      }
+      for (const synth of [whole,split]) {
+        synth.setOperator(6,{mode:'ratio',coarse:1,fine:0,detune:7});
+        synth.setFeedback(0);
+      }
+      const recovered = render(8192).subarray(512);
+      const mean = recovered.reduce((sum,value) => sum + value,0) / recovered.length;
+      const varying = recovered.map(value => value - mean);
+      assert(rms(varying) > steady * 0.5,
+        'rapid steps must retain the sustained envelope instead of repeatedly restarting its slow attack');
+      for (const synth of [whole,split]) synth.allNotesOff();
+      const released = render(sampleRate * 3);
+      assert(rms(released.subarray(-4096)) < 0.00001,'all original voices still respond to release after rapid steps');
+      for (const synth of [whole,split]) { synth.noteOn(69,100); synth.render(137); synth.panic(); }
+      assert(render(1024).every(value => value === 0),'panic clears buffered PCM after rapid changes and a new note');
+    } finally { dispose(); }
+  });
 }
 
 test('a carrier frequency edit keeps oscillator phase at the next internal block', async () => {
@@ -269,6 +335,8 @@ test('a carrier frequency edit keeps oscillator phase at the next internal block
 });
 
 test('an abrupt carrier level rise uses the existing block gain ramp', async () => {
+  // This preserves Google's inherited per-block operator gain behavior. It is
+  // not a new smoothing requirement or a no-click guarantee for live edits.
   const synth = await instrument(sine({outputLevel:0}));
   try {
     synth.noteOn(69,100); synth.render(10240);

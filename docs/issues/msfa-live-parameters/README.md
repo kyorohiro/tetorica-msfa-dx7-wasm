@@ -18,6 +18,12 @@ No external engine replacement, channel API, event scheduler or voice allocator.
 - Live changes do not restart notes, phases, key state, or envelope stages.
   Captured velocity and keyboard scaling are retained. Ended notes stay ended.
 - Same-value and empty edits preserve PCM; validation remains atomic.
+- Abrupt frequency/feedback changes apply directly at the next ungenerated
+  block. Waveform discontinuities and clicks are explicitly accepted. Add no
+  automatic parameter smoothing, glide, feedback interpolation, crossfade or
+  click suppression. Retain phase/EG state, upstream gain interpolation and
+  output-rate resampling. NaN/Infinity reject; corrupted/unbounded output,
+  divergence and crashes are unacceptable and require regression tests.
 - Application is at the next ungenerated 64-frame internal block, after already
   rendered leftovers / resampling lookahead. Acknowledgement means applied
   state, not that buffered/device audio has already been heard.
@@ -27,7 +33,7 @@ No external engine replacement, channel API, event scheduler or voice allocator.
 
 Intentional behavior change from npm 0.2.0: supported operator edits now affect
 held notes of that patch. API signatures remain compatible. No-edit PCM must
-match the previous engine. This work does not publish npm versions.
+match the previous engine. Release versions: standalone 0.3.0 / bundled FM 0.2.16.
 
 Completion: native/WASM PCM regressions, 44.1/48 kHz, voice isolation,
 attack/sustain/release, actual browser audio, Main/Worker, packaged types and
